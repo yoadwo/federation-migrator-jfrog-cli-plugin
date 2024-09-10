@@ -1,0 +1,7 @@
+# /.idea/
+.vscode
+.idea
+*.iml
+
+# IOS
+*.DS_Store
