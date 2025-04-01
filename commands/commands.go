@@ -5,7 +5,6 @@ import (
 	"github.com/jfrog/jfrog-cli-core/v2/plugins/components"
 	"github.com/jfrog/jfrog-cli-core/v2/utils/coreutils"
 	"github.com/jfrog/jfrog-client-go/utils/log"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,13 +100,7 @@ func getMigrationJarFile() (string, error) {
 		return "", errors.New("Dir " + dir + " doesn't exists")
 	}
 
-	files, err := findFile(dir)
-
-	if len(files) != 1 {
-		return "", errors.New("Should've found only 1 jar files, however, found: " + strconv.Itoa(len(files)))
-	}
-
-	file := files[0]
+	file, err := findFile(dir, "on-prem-1.1-jar-with-dependencies.jar")
 	return file, err
 }
 
@@ -170,15 +163,13 @@ func prepareUrl(c *components.Context, conf *migrationArgs) error {
 	return nil
 }
 
-func findFile(root string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(root, func(pathFile string, d fs.DirEntry, err error) error {
-		if !d.IsDir() {
-			if strings.HasSuffix(d.Name(), "jar") && strings.HasPrefix(d.Name(), "on-prem") {
-				files = append(files, pathFile)
-			}
-		}
-		return nil
-	})
-	return files, err
+func findFile(root string, fileName string) (string, error) {
+    filePath := filepath.Join(root, fileName)
+	if _, err := os.Stat(filePath); err == nil {
+		return filePath, nil
+	  } else if errors.Is(err, os.ErrNotExist) {
+		return "", err 
+	  } else {
+		return "", errors.New("Error checking file existence: " + err.Error())  
+	  }
 }
