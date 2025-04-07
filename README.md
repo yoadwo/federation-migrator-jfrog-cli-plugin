@@ -14,6 +14,8 @@ Run the following command to install the migration plugin from the official regi
 `jf plugin install federation-migrator`
 
 This command installs the plugin and the jar of the migration tool, which performs all required operations with one command
+#### Note
+If a previous installation of the plugin exists, we recommend that you remove or uninstall it before running the plugin installer. On rare occasions, the previous installation can cause the plugin installer to fail.
 
 ### Migration Procedure
 
