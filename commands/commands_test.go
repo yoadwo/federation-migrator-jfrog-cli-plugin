@@ -75,5 +75,5 @@ func TestMigrateNoDir(t *testing.T) {
 	context := &components.Context{Arguments: strings}
 	err := migrate(context, true)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), " doesn't exists")
+	assert.Contains(t, err.Error(), "no such file or directory")
 }
