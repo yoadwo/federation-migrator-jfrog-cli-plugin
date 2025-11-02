@@ -175,7 +175,7 @@ func getMigrationJarFile() (string, error) {
 		return "", errors.New("Dir " + dir + " doesn't exists")
 	}
 
-	file, err := findFile(dir, "on-prem-2.1-jar-with-dependencies.jar")
+	file, err := findFile(dir, "on-prem-2.2-jar-with-dependencies.jar")
 	return file, err
 }
 

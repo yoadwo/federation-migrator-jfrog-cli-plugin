@@ -14,7 +14,7 @@ func getApp() components.App {
 	app := components.App{}
 	app.Name = "federation-migrator"
 	app.Description = "Migrate from the legacy federation to the new service (or rollback)."
-	app.Version = "v2.1.0"
+	app.Version = "v2.2.0"
 	app.Commands = getCommands()
 	return app
 }
