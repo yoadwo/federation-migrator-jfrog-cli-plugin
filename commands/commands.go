@@ -20,7 +20,7 @@ func GetMigrateToRtfsCommand() components.Command {
 		Description: "Migrate Legacy federation to rtfs",
 		Aliases:     []string{"mi_rtfs"},
 		Arguments:   getDefaultMigrationArguments(),
-		Flags:       getMigrationFlags(),
+		Flags:       append(getMigrationFlags(), getHttpFlags()...),
 		Action: func(c *components.Context) error {
 			return migrateToRTFS(c)
 		},
@@ -33,7 +33,7 @@ func GetMigrateToRTCommand() components.Command {
 		Description: "Migrate rtfs to legacy federation",
 		Aliases:     []string{"mi_rt"},
 		Arguments:   getDefaultMigrationArguments(),
-		Flags:       getMigrationFlags(),
+		Flags:       append(getMigrationFlags(), getHttpFlags()...),
 		Action: func(c *components.Context) error {
 			return migrateToRT(c)
 		},
@@ -46,7 +46,7 @@ func GetReplicationToFederationCommand() components.Command {
 		Description: "Convert repositories from a push replication-based setup to unidirectional federated repositories between two Artifactory instances",
 		Aliases:     []string{"mi_r2f"},
 		Arguments:   getReplicationToFederationArguments(),
-		Flags:       getReplicationToFederationFlags(),
+		Flags:       append(getReplicationToFederationFlags(), getHttpFlags()...),
 		Action: func(c *components.Context) error {
 			return migrateReplicationToFederation(c)
 		},
@@ -55,10 +55,10 @@ func GetReplicationToFederationCommand() components.Command {
 
 func getReplicationToFederationArguments() []components.Argument {
 	return []components.Argument{
-		{Name: "url", Description: "The source Artifactory base URL without /artifactory."},
-		{Name: "token", Description: "The access token for the source Artifactory."},
-		{Name: "target-url", Description: "The target Artifactory base URL without /artifactory."},
-		{Name: "target-token", Description: "The access token for the target Artifactory."},
+		{Name: "url", Description: "The source Artifactory base URL without /artifactory"},
+		{Name: "token", Description: "The access token for the source Artifactory"},
+		{Name: "target-url", Description: "The target Artifactory base URL without /artifactory"},
+		{Name: "target-token", Description: "The access token for the target Artifactory"},
 	}
 }
 
@@ -86,7 +86,7 @@ func getHttpFlags() []components.Flag {
 }
 
 func getReplicationToFederationFlags() []components.Flag {
-	return append([]components.Flag{
+	return []components.Flag{
 		components.NewBoolFlag(flags.AllowMultipleReplications,
 			"Include repositories that replicate to more than one target; default behavior is to skip them",
 			components.WithBoolDefaultValue(false)),
@@ -102,23 +102,23 @@ func getReplicationToFederationFlags() []components.Flag {
 		components.NewBoolFlag(flags.Bidirectional,
 			"Configure federation as bidirectional; default is unidirectional (source pushes to target only)",
 			components.WithBoolDefaultValue(false)),
-	}, getHttpFlags()...)
+	}
 }
 
 func getDefaultMigrationArguments() []components.Argument {
 	return []components.Argument{
 		{
 			Name:        "url",
-			Description: "The base url without /artifactory.",
+			Description: "The base url without /artifactory",
 		}, {
 			Name:        "token",
-			Description: "The access token to use.",
+			Description: "The access token to use",
 		},
 	}
 }
 
 func getMigrationFlags() []components.Flag {
-	return append([]components.Flag{
+	return []components.Flag{
 		components.NewBoolFlag(flags.Force,
 			"Force a migration without properly processing all events from queues",
 			components.WithBoolDefaultValue(false)),
@@ -140,7 +140,7 @@ func getMigrationFlags() []components.Flag {
 		components.NewStringFlag(flags.ExecutorThreads,
 			"Number of executor threads",
 			components.WithIntDefaultValue(200)),
-	}, getHttpFlags()...)
+	}
 }
 
 type migrationArgs struct {
