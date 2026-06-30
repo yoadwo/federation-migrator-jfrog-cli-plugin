@@ -40,38 +40,33 @@ func GetMigrateToRTCommand() components.Command {
 	}
 }
 
-func getDefaultMigrationArguments() []components.Argument {
-	return []components.Argument{
-		{
-			Name:        "url",
-			Description: "The base url without /artifactory.",
-		}, {
-			Name:        "token",
-			Description: "The access token to use.",
+func GetReplicationToFederationCommand() components.Command {
+	return components.Command{
+		Name:        "replication_to_federation",
+		Description: "Convert repositories from a push replication-based setup to unidirectional federated repositories between two Artifactory instances",
+		Aliases:     []string{"mi_r2f"},
+		Arguments:   getReplicationToFederationArguments(),
+		Flags:       getReplicationToFederationFlags(),
+		Action: func(c *components.Context) error {
+			return migrateReplicationToFederation(c)
 		},
 	}
 }
 
-func getMigrationFlags() []components.Flag {
+func getReplicationToFederationArguments() []components.Argument {
+	return []components.Argument{
+		{Name: "url", Description: "The source Artifactory base URL without /artifactory."},
+		{Name: "token", Description: "The access token for the source Artifactory."},
+		{Name: "target-url", Description: "The target Artifactory base URL without /artifactory."},
+		{Name: "target-token", Description: "The access token for the target Artifactory."},
+	}
+}
+
+func getHttpFlags() []components.Flag {
 	return []components.Flag{
-		components.NewBoolFlag(flags.Force,
-			"Force a migration without properly processing all events from queues",
-			components.WithBoolDefaultValue(false)),
-		components.NewBoolFlag(flags.Parallel,
-			"Enable parallel mode for faster queue migration",
-			components.WithBoolDefaultValue(false)),
-		components.NewStringFlag(flags.BatchSize,
-			"Batch size for RTFS import operations, larger sizes may cause performance issues",
-			components.WithIntDefaultValue(250)),
-		components.NewBoolFlag(flags.StatefulRun,
-			"Enable stateful run that will migrate members that were not migrated in the previous run",
-			components.WithBoolDefaultValue(false)),
-		components.NewBoolFlag(flags.RtfsLegacyContextPath,
-			"Use the legacy context path for RTFS, including the '/artifactory/service' prefix",
-			components.WithBoolDefaultValue(false)),
 		components.NewStringFlag(flags.HttpSocketTimeoutMs,
 			"Socket timeout in milliseconds",
-			components.WithIntDefaultValue(30*60*1000)), // 30 minutes
+			components.WithIntDefaultValue(30*60*1000)),
 		components.NewStringFlag(flags.HttpMaxTotalConnections,
 			"Maximum total HTTP client connections",
 			components.WithIntDefaultValue(200)),
@@ -87,13 +82,65 @@ func getMigrationFlags() []components.Flag {
 		components.NewBoolFlag(flags.HttpVerboseMode,
 			"Enable verbose HTTP client mode",
 			components.WithBoolDefaultValue(false)),
+	}
+}
+
+func getReplicationToFederationFlags() []components.Flag {
+	return append([]components.Flag{
+		components.NewBoolFlag(flags.AllowMultipleReplications,
+			"Include repositories that replicate to more than one target; default behavior is to skip them",
+			components.WithBoolDefaultValue(false)),
+		components.NewStringFlag(flags.Repos,
+			"Comma-separated list of repository names to convert (mutually exclusive with --repo-list-file)"),
+		components.NewStringFlag(flags.RepoListFile,
+			"Path to a file with one repository name per line; blank lines and lines starting with # are ignored (mutually exclusive with --repos)"),
+		components.NewStringFlag(flags.OutputFile,
+			"Path to write the per-repository result report; defaults to ./replication-to-federation-results-<timestamp>.txt in the current directory"),
+		components.NewStringFlag(flags.ConversionPollInterval,
+			"Milliseconds to wait before retrying federation member assignment after HTTP 400/409",
+			components.WithIntDefaultValue(2000)),
+		components.NewBoolFlag(flags.Bidirectional,
+			"Configure federation as bidirectional; default is unidirectional (source pushes to target only)",
+			components.WithBoolDefaultValue(false)),
+	}, getHttpFlags()...)
+}
+
+func getDefaultMigrationArguments() []components.Argument {
+	return []components.Argument{
+		{
+			Name:        "url",
+			Description: "The base url without /artifactory.",
+		}, {
+			Name:        "token",
+			Description: "The access token to use.",
+		},
+	}
+}
+
+func getMigrationFlags() []components.Flag {
+	return append([]components.Flag{
+		components.NewBoolFlag(flags.Force,
+			"Force a migration without properly processing all events from queues",
+			components.WithBoolDefaultValue(false)),
+		components.NewBoolFlag(flags.Parallel,
+			"Enable parallel mode for faster queue migration",
+			components.WithBoolDefaultValue(false)),
+		components.NewStringFlag(flags.BatchSize,
+			"Batch size for RTFS import operations, larger sizes may cause performance issues",
+			components.WithIntDefaultValue(250)),
+		components.NewBoolFlag(flags.StatefulRun,
+			"Enable stateful run that will migrate members that were not migrated in the previous run",
+			components.WithBoolDefaultValue(false)),
+		components.NewBoolFlag(flags.RtfsLegacyContextPath,
+			"Use the legacy context path for RTFS, including the '/artifactory/service' prefix",
+			components.WithBoolDefaultValue(false)),
 		components.NewStringFlag(flags.ExecutorTimeoutMin,
 			"Executor timeout in minutes",
 			components.WithIntDefaultValue(120)),
 		components.NewStringFlag(flags.ExecutorThreads,
 			"Number of executor threads",
 			components.WithIntDefaultValue(200)),
-	}
+	}, getHttpFlags()...)
 }
 
 type migrationArgs struct {
@@ -113,6 +160,15 @@ type migrationArgs struct {
 	verboseMode               bool
 	executorTimeoutMin        int
 	executorThreads           int
+	// REPLICATION_TO_FEDERATION fields
+	targetUrl                 string
+	targetToken               string
+	allowMultipleReplications bool
+	repos                     string
+	repoListFile              string
+	outputFile                string
+	conversionPollInterval    int
+	bidirectional             bool
 }
 
 func migrateToRT(c *components.Context) error {
@@ -259,6 +315,143 @@ func preparePlan(migrateToRtfs bool, conf *migrationArgs) {
 	} else {
 		conf.plan = "RTFS_TO_RT"
 	}
+}
+
+func migrateReplicationToFederation(c *components.Context) error {
+	if len(c.Arguments) != 4 {
+		return errors.New("Need to provide four arguments while provided " + strconv.Itoa(len(c.Arguments)))
+	}
+	file, err := getMigrationJarFile()
+	if err != nil {
+		log.Error("Failed to get migration JAR file: " + err.Error())
+		return err
+	}
+	log.Info("Using JAR file: " + file)
+
+	conf, err := prepareReplicationToFederationConfiguration(c)
+	if err != nil {
+		log.Error("Failed to prepare configuration: " + err.Error())
+		return err
+	}
+
+	args := buildReplicationToFederationCommandArgs(file, conf)
+
+	cmdStr := "java " + strings.Join(args, " ")
+	log.Info("Executing command: " + cmdStr)
+
+	cmd := exec.Command("java", args...)
+	combinedOutput, err := cmd.CombinedOutput()
+	log.Info("Command output:\n" + string(combinedOutput))
+
+	if err != nil {
+		log.Error("Command execution failed: " + err.Error())
+	} else {
+		log.Info("Command executed successfully")
+	}
+
+	return err
+}
+
+func prepareReplicationToFederationConfiguration(c *components.Context) (*migrationArgs, error) {
+	conf := new(migrationArgs)
+
+	if err := prepareUrl(c, conf); err != nil {
+		return nil, err
+	}
+	if err := prepareToken(c, conf); err != nil {
+		return nil, err
+	}
+
+	conf.plan = "REPLICATION_TO_FEDERATION"
+
+	if err := extractFlagValues(c, conf); err != nil {
+		return nil, err
+	}
+	if err := extractReplicationFlags(c, conf); err != nil {
+		return nil, err
+	}
+
+	log.Info("Using plan: " + conf.plan)
+	log.Info("URL: " + conf.url)
+	logFlagValues(conf)
+	return conf, nil
+}
+
+func extractReplicationFlags(c *components.Context, conf *migrationArgs) error {
+	targetUrl := c.Arguments[2]
+	if targetUrl == "" {
+		return errors.New("no target-url provided")
+	}
+	if strings.HasSuffix(targetUrl, "/artifactory") {
+		targetUrl = strings.TrimSuffix(targetUrl, "/artifactory")
+	}
+	conf.targetUrl = targetUrl
+
+	conf.targetToken = c.Arguments[3]
+	if conf.targetToken == "" {
+		return errors.New("no target-token provided")
+	}
+
+	if c.IsFlagSet(flags.AllowMultipleReplications) {
+		conf.allowMultipleReplications = c.GetBoolFlagValue(flags.AllowMultipleReplications)
+	}
+	if c.IsFlagSet(flags.Repos) {
+		conf.repos = c.GetStringFlagValue(flags.Repos)
+	}
+	if c.IsFlagSet(flags.RepoListFile) {
+		conf.repoListFile = c.GetStringFlagValue(flags.RepoListFile)
+	}
+	if c.IsFlagSet(flags.OutputFile) {
+		conf.outputFile = c.GetStringFlagValue(flags.OutputFile)
+	}
+	if c.IsFlagSet(flags.Bidirectional) {
+		conf.bidirectional = c.GetBoolFlagValue(flags.Bidirectional)
+	}
+	if c.IsFlagSet(flags.ConversionPollInterval) {
+		value, err := c.GetIntFlagValue(flags.ConversionPollInterval)
+		if err != nil {
+			return fmt.Errorf("invalid %s value: %w", flags.ConversionPollInterval, err)
+		}
+		conf.conversionPollInterval = value
+	}
+	return nil
+}
+
+func buildReplicationToFederationCommandArgs(jarFile string, conf *migrationArgs) []string {
+	args := []string{"-jar", jarFile, conf.url, conf.plan, conf.token}
+
+	args = append(args, "-tu", conf.targetUrl)
+	args = append(args, "-tt", conf.targetToken)
+
+	if conf.allowMultipleReplications {
+		args = append(args, "-amr")
+	}
+	if conf.repos != "" {
+		args = append(args, "-r", conf.repos)
+	}
+	if conf.repoListFile != "" {
+		args = append(args, "-rlf", conf.repoListFile)
+	}
+	if conf.outputFile != "" {
+		args = append(args, "-o", conf.outputFile)
+	}
+	if conf.conversionPollInterval > 0 {
+		args = append(args, "-cpi", strconv.Itoa(conf.conversionPollInterval))
+	}
+	if conf.bidirectional {
+		args = append(args, "-bd")
+	}
+
+	args = append(args, "-hst", strconv.Itoa(conf.socketTimeoutMs))
+	args = append(args, "-htc", strconv.Itoa(conf.maxTotalConnections))
+	args = append(args, "-hcr", strconv.Itoa(conf.maxConnectionsPerRoute))
+	args = append(args, "-hpt", strconv.Itoa(conf.connectionPoolTtlSec))
+	args = append(args, "-hrc", strconv.Itoa(conf.retryCount))
+	if conf.verboseMode {
+		args = append(args, "-hvm")
+	}
+
+	return args
 }
 
 func prepareToken(c *components.Context, conf *migrationArgs) error {
