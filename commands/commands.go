@@ -43,7 +43,7 @@ func GetMigrateToRTCommand() components.Command {
 func GetReplicationToFederationCommand() components.Command {
 	return components.Command{
 		Name:        "replication_to_federation",
-		Description: "Convert repositories from a push replication-based setup to unidirectional federated repositories between two Artifactory instances",
+		Description: "Migrate Artifactory repositories from push replication to unidirectional federation.",
 		Arguments:   getReplicationToFederationArguments(),
 		Flags:       append(getReplicationToFederationFlags(), getHttpFlags()...),
 		Action: func(c *components.Context) error {
