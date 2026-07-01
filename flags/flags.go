@@ -14,4 +14,12 @@ const (
 	HttpVerboseMode            = "http-verbose-mode"
 	ExecutorTimeoutMin         = "executor-timeout-min"
 	ExecutorThreads            = "executor-threads"
+
+	// REPLICATION_TO_FEDERATION plan flags
+	AllowMultipleReplications  = "allow-multiple-replications"
+	Repos                      = "repos"
+	RepoListFile               = "repo-list-file"
+	OutputFile                 = "output-file"
+	ConversionPollInterval     = "conversion-poll-interval"
+	Bidirectional              = "bidirectional"
 )

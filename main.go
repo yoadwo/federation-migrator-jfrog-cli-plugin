@@ -13,8 +13,8 @@ func main() {
 func getApp() components.App {
 	app := components.App{}
 	app.Name = "federation-migrator"
-	app.Description = "Migrate from the legacy federation to the new service (or rollback)."
-	app.Version = "v2.4.0"
+	app.Description = "JFrog Artifactory federation migration tool"
+	app.Version = "v2.4.1"
 	app.Commands = getCommands()
 	return app
 }
@@ -23,5 +23,6 @@ func getCommands() []components.Command {
 	return []components.Command{
 		commands.GetMigrateToRtfsCommand(),
 		commands.GetMigrateToRTCommand(),
+		commands.GetReplicationToFederationCommand(),
 	}
 }
